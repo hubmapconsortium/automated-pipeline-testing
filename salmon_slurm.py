@@ -11,6 +11,7 @@ from data_path_utils import create_slurm_path
 pipeline_path = Path(
     "/hive/hubmap/data/CMU_Tools_Testing_Group/pipelines/salmon-rnaseq/pipeline.cwl"
 )
+singularity_image_dir = Path("/hive/hubmap/data/CMU_Tools_Testing_Group/singularity-images")
 scratch_dir_base = Path("/dev/shm/hive-cwl")
 
 template = """
@@ -21,12 +22,14 @@ template = """
 #SBATCH -c {threads}
 #SBATCH -o {output_log}
 
+export CWL_SINGULARITY_CACHE={singularity_image_dir}
 {cwltool_command}
 rm -rf {tmp_path}
 """.strip()
 
 pipeline_command_template = [
     "cwltool",
+    "--singularity",
     "--timestamps",
     "--tmpdir-prefix",
     "{tmpdir_prefix}/",
@@ -67,6 +70,7 @@ def submit_job(dataset_path: Path, assay: str, threads: int, slurm_path: Path, p
 
     slurm_script = template.format(
         threads=threads,
+        singularity_image_dir=singularity_image_dir,
         output_log=dest_dir / "salmon.log",
         tmp_path=shlex.quote(fspath(tmp_path)),
         cwltool_command=pipeline_command_str,
