@@ -5,7 +5,10 @@ from pathlib import Path
 from subprocess import CalledProcessError, check_call, check_output
 from typing import Optional
 
-from multi_docker_build.build_docker_images import read_images
+from multi_docker_build.build_docker_images import (
+    read_images,
+    strip_v_from_version_number,
+)
 
 default_image_tag = "latest"
 singularity_build_command_template = [
@@ -20,7 +23,7 @@ def get_git_tag(directory: Path) -> Optional[str]:
     command = ["git", "describe", "--tags"]
     try:
         tag = check_output(command, cwd=directory).strip().decode()
-        return tag
+        return strip_v_from_version_number(tag)
     except CalledProcessError:
         return None
 
