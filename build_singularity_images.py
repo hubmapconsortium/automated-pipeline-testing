@@ -20,6 +20,7 @@ singularity_build_command_template = [
 
 singularity_image_dir = Path("/hive/hubmap/data/CMU_Tools_Testing_Group/singularity-images")
 
+
 def get_git_tag(directory: Path) -> Optional[str]:
     command = ["git", "describe", "--tags"]
     try:
@@ -56,7 +57,11 @@ def main(directory: Path, dest_image_dir: Path):
 if __name__ == "__main__":
     p = ArgumentParser()
     p.add_argument("--directory", type=Path, default=Path())
-    p.add_argument("--dest-image-dir", type=Path, default=Path("/hive/hubmap/data/CMU_Tools_Testing_Group/singularity-images/"))
+    p.add_argument(
+        "--dest-image-dir",
+        type=Path,
+        default=Path("/hive/hubmap/data/CMU_Tools_Testing_Group/singularity-images/"),
+    )
     args = p.parse_args()
 
     main(args.directory, args.dest_image_dir)
