@@ -60,7 +60,7 @@ if __name__ == "__main__":
     p.add_argument(
         "--dest-image-dir",
         type=Path,
-        default=Path("/hive/hubmap/data/CMU_Tools_Testing_Group/singularity-images/"),
+        default=Path("/hive/hubmap/data/CMU_Tools_Testing_Group/singularity-images/")
     )
     args = p.parse_args()
 
