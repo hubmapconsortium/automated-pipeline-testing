@@ -229,7 +229,7 @@ def get_dataset_subset(modality, num_from_each):
                 while len(sub_df_list) > 0 and count < num_from_each:
                     random_index = random.randint(0, len(sub_df_list) - 1)
                     random_record = sub_df_list.pop(random_index)
-                    uuids_list.append(random_record["uuid"])
+                    uuids_list.append((random_record["uuid"],))
                     count += 1
 
     return uuids_list
@@ -298,9 +298,9 @@ def get_path_to_data(modality, dataset_tuple):
 
 
 # def main(dataset_paths: List[Path], assay: str, threads: int, pretend: bool):
-def main(modality, threads=1, gpus=0, pretend=False):
+def main(modality, threads=1, gpus=0, num_from_each=1, pretend=False):
 
-    dataset_tuples = get_dataset_subset(modality, num_from_each=1)
+    dataset_tuples = get_dataset_subset(modality, num_from_each=num_from_each)
 
     slurm_path_prefixes = {"rna":"salmon-rnaseq", "atac":"sc-atac-seq", "codex":"codex-pipeline"}
     slurm_path_prefix = slurm_path_prefixes[modality]
@@ -327,6 +327,7 @@ if __name__ == "__main__":
     p.add_argument("--modality", type=str)
     p.add_argument("--threads", type=int, default=16)
     p.add_argument("--gpus", type=int, default=0)
+    p.add_argument("--num_from_each", type=int, default=1)
     p.add_argument("-n", "--pretend", action="store_true")
     args = p.parse_args()
 
@@ -335,4 +336,5 @@ if __name__ == "__main__":
         threads=args.threads,
         gpus=args.gpus,
         pretend=args.pretend,
+        num_from_each=args.num_from_each,
     )
