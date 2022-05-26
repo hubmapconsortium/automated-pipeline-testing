@@ -20,7 +20,7 @@ singularity_build_command_template = [
 
 
 def get_git_tag(directory: Path) -> Optional[str]:
-    command = ["git", "describe", "--tags"]
+    command = ["git", "describe", "--tags", "--abbrev=12"]
     try:
         tag = check_output(command, cwd=directory).strip().decode()
         return strip_v_from_version_number(tag)
