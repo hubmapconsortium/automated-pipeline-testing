@@ -1,0 +1,62 @@
+name: automated-pipeline-testing
+channels:
+  - defaults
+dependencies:
+  - _libgcc_mutex=0.1=main
+  - _openmp_mutex=5.1=1_gnu
+  - ca-certificates=2022.4.26=h06a4308_0
+  - certifi=2022.5.18.1=py38h06a4308_0
+  - ld_impl_linux-64=2.38=h1181459_1
+  - libffi=3.3=he6710b0_2
+  - libgcc-ng=11.2.0=h1234567_0
+  - libgomp=11.2.0=h1234567_0
+  - libstdcxx-ng=11.2.0=h1234567_0
+  - ncurses=6.3=h7f8727e_2
+  - openssl=1.1.1o=h7f8727e_0
+  - pip=21.2.4=py38h06a4308_0
+  - python=3.8.13=h12debd9_0
+  - readline=8.1.2=h7f8727e_1
+  - setuptools=61.2.0=py38h06a4308_0
+  - sqlite=3.38.3=hc218d9a_0
+  - tk=8.6.11=h1ccaba5_1
+  - wheel=0.37.1=pyhd3eb1b0_0
+  - xz=5.2.5=h7f8727e_1
+  - zlib=1.2.12=h7f8727e_2
+  - pip:
+    - argcomplete==2.0.0
+    - bagit==1.8.1
+    - cachecontrol==0.12.11
+    - charset-normalizer==2.0.12
+    - coloredlogs==15.0.1
+    - cwltool==3.1.20220502060230
+    - data-path-utils==0.8.1
+    - hubmap-api-py-client==0.0.9
+    - humanfriendly==10.0
+    - idna==3.3
+    - isodate==0.6.1
+    - lockfile==0.12.2
+    - lxml==4.8.0
+    - mistune==0.8.4
+    - msgpack==1.0.3
+    - multi-docker-build==0.7.1
+    - mypy-extensions==0.4.3
+    - networkx==2.8.2
+    - numpy==1.22.4
+    - pandas==1.4.2
+    - prov==1.5.1
+    - psutil==5.9.1
+    - pydot==1.4.2
+    - pyparsing==3.0.9
+    - python-dateutil==2.8.2
+    - pytz==2022.1
+    - rdflib==6.1.1
+    - requests==2.27.1
+    - ruamel-yaml==0.17.21
+    - ruamel-yaml-clib==0.2.6
+    - schema-salad==8.3.20220525163636
+    - shellescape==3.8.1
+    - six==1.16.0
+    - typing-extensions==4.2.0
+    - urllib3==1.26.9
+prefix: /hive/users/seandona/anaconda3/envs/py38
+
