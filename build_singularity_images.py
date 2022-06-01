@@ -15,7 +15,7 @@ singularity_build_command_template = [
     "singularity",
     "build",
     "{dest_image_path}",
-    "docker://{docker_image}",
+    "docker-daemon://{docker_image}",
 ]
 
 
