@@ -13,6 +13,8 @@ import random
 
 from data_path_utils import create_slurm_path
 
+supported_pipelines = {"salmon-rnaseq", "sc-atac-seq-pipeline", "codex-pipeline", "sprm"}
+
 pipeline_paths = {
     "salmon-rnaseq": Path("salmon-rnaseq/pipeline.cwl"),
     "sc-atac-seq-pipeline": Path("sc-atac-seq-pipeline/sc_atac_seq_prep_process_analyze.cwl"),
@@ -245,20 +247,25 @@ def get_metadata(raw_uuid, derived_uuid, pipeline_name):
 def get_datasets_and_metadata(pipeline_name):
     derived_uuids = get_datasets_by_pipeline(pipeline_name)
     uuid_pairs = [(get_parent_uuid(uuid), uuid) for uuid in derived_uuids]
-    print(len(uuid_pairs))
     metadata_list = [
         get_metadata(uuid_pair[0], uuid_pair[1], pipeline_name) for uuid_pair in uuid_pairs
     ]
-    print(len(metadata_list))
     return pd.DataFrame(metadata_list)
 
 
-def get_dataset_subset(pipeline_name, num_from_each):
+def get_dataset_subset(pipeline_name, include_uuids, num_from_each):
     metadata_df = get_datasets_and_metadata(pipeline_name)
-    print(len(metadata_df.index))
+    include_df = metadata_df[metadata_df["uuid"].isin(include_uuids)]
+    include_df_list = include_df.to_dict(orient='records')
+
+    metadata_df = metadata_df[~metadata_df["uuid"].isin(include_uuids)]
     uuids_list = []
 
     if pipeline_name in ["sc-atac-seq-pipeline", "salmon-rnaseq"]:
+        for record in include_df_list:
+            uuids_list.append(
+                (record["uuid"], record["assay"], record["group_name"])
+            )
         assays = list(metadata_df["assay"].unique())
         for assay in assays:
             sub_df = metadata_df[metadata_df["assay"] == assay]
@@ -273,6 +280,10 @@ def get_dataset_subset(pipeline_name, num_from_each):
                 count += 1
 
     elif pipeline_name in ["codex-pipeline", "sprm"]:
+        for record in include_df_list:
+            uuids_list.append(
+                (record["uuid"],)
+            )
         group_names = list(metadata_df["group_name"].unique())
         tissue_types = list(metadata_df["tissue_type"].unique())
         for group_name in group_names:
@@ -355,9 +366,18 @@ def get_path_to_data(pipeline_name, dataset_tuple):
 
 
 # def main(dataset_paths: List[Path], assay: str, threads: int, pretend: bool):
-def main(pipeline_name, pipeline_directory, threads=1, gpus=0, num_from_each=1, pretend=False):
+def main(pipeline_name, pipeline_directory, include_uuids, threads=1, gpus=0, num_from_each=1, pretend=False):
 
-    dataset_tuples = get_dataset_subset(pipeline_name, num_from_each=num_from_each)
+    if pipeline_name not in supported_pipelines:
+        raise ValueError(f"pipeline_name must be one of {', '.join(supported_pipelines)}")
+
+    if include_uuids is None:
+        include_uuids = []
+
+    #@TODO
+    #Confirm that included UUIDs are valid and of the appropriate type before proceeding
+
+    dataset_tuples = get_dataset_subset(pipeline_name, include_uuids, num_from_each=num_from_each)
 
     slurm_path_prefix = pipeline_name
 
@@ -386,6 +406,7 @@ if __name__ == "__main__":
     p.add_argument("--threads", type=int, default=16)
     p.add_argument("--gpus", type=int, default=0)
     p.add_argument("--num_from_each", type=int, default=1)
+    p.add_argument("--include_uuids", type=str, nargs='*')
     p.add_argument("-n", "--pretend", action="store_true")
     args = p.parse_args()
 
@@ -396,4 +417,5 @@ if __name__ == "__main__":
         gpus=args.gpus,
         pretend=args.pretend,
         num_from_each=args.num_from_each,
+        include_uuids=args.include_uuids,
     )
