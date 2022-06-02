@@ -14,11 +14,22 @@ import random
 from data_path_utils import create_slurm_path
 
 pipeline_paths = {
-    "rna": Path("salmon-rnaseq/pipeline.cwl"),
-    "atac": Path("sc-atac-seq-pipeline/sc_atac_seq_prep_process_analyze.cwl"),
-    "codex": Path("codex_pipeline/pipeline.cwl"),
+    "salmon-rnaseq": Path("salmon-rnaseq/pipeline.cwl"),
+    "sc-atac-seq-pipeline": Path("sc-atac-seq-pipeline/sc_atac_seq_prep_process_analyze.cwl"),
+    "codex-pipeline": Path("codex-pipeline/pipeline.cwl"),
+    "celldive-pipeline": Path("celldive-pipeline/pipeline.cwl"),
+    "sprm": Path("sprm/pipeline.cwl"),
 }
-pipeline_base_path = Path("/hive/hubmap/data/CMU_Tools_Testing_Group/pipelines/")
+
+modalities_dict = {
+    "salmon-rnaseq": "rna",
+    "sc-atac-seq-pipeline": "atac",
+    "codex-pipeline": "codex",
+    "celldive-pipeline": "celldive",
+    "sprm": "codex",
+}
+
+default_pipeline_base_path = Path("/hive/hubmap/data/CMU_Tools_Testing_Group/pipelines/")
 
 singularity_image_dir = Path("/hive/hubmap/data/CMU_Tools_Testing_Group/singularity-images")
 scratch_dir_base = Path("/dev/shm/hive-cwl")
@@ -37,7 +48,7 @@ rm -rf {tmp_path}
 """.strip()
 
 pipeline_command_templates = {
-    "rna": [
+    "salmon-rnaseq": [
         "cwltool",
         "--singularity",
         "--timestamps",
@@ -55,7 +66,7 @@ pipeline_command_templates = {
         "--threads",
         "{threads}",
     ],
-    "atac": [
+    "sc-atac-seq-pipeline": [
         "cwltool",
         "--singularity",
         "--timestamps",
@@ -73,7 +84,39 @@ pipeline_command_templates = {
         "--threads",
         "{threads}",
     ],
-    "codex": [
+    "celldive-pipeline": [
+        "cwltool",
+        "--singularity",
+        "--timestamps",
+        "--tmpdir-prefix",
+        "{tmpdir_prefix}/",
+        "--tmp-outdir-prefix",
+        "{tmp_outdir_prefix}/",
+        "--outdir",
+        "{out_dir}",
+        "{pipeline_path}",
+        "--data_directory",
+        "{data_directory}",
+        "--gpus",
+        "{gpus}",
+    ],
+    "sprm": [
+        "cwltool",
+        "--singularity",
+        "--timestamps",
+        "--tmpdir-prefix",
+        "{tmpdir_prefix}/",
+        "--tmp-outdir-prefix",
+        "{tmp_outdir_prefix}/",
+        "--outdir",
+        "{out_dir}",
+        "{pipeline_path}",
+        "--image_dir",
+        "{image_directory}",
+        "--mask_dir",
+        "{mask_directory}"
+    ],
+    "codex-pipeline": [
         "cwltool",
         "--singularity",
         "--timestamps",
@@ -93,7 +136,8 @@ pipeline_command_templates = {
 
 
 def submit_job(
-    modality: str,
+    pipeline_name: str,
+    pipeline_base_path: Path,
     dataset_path: Path,
     assay: str,
     threads: int,
@@ -107,8 +151,13 @@ def submit_job(
 
     tmp_path = scratch_dir_base / dataset
 
-    pipeline_command_template = pipeline_command_templates[modality]
-    pipeline_path = pipeline_base_path / pipeline_paths[modality]
+    pipeline_command_template = pipeline_command_templates[pipeline_name]
+    pipeline_path = pipeline_paths[pipeline_name]
+
+    if pipeline_base_path.resolve() != default_pipeline_base_path.resolve():
+        pipeline_path = Path(pipeline_path.name)
+
+    pipeline_path = pipeline_base_path / pipeline_path
     pipeline_command = [
         piece.format(
             tmpdir_prefix=tmp_path / "cwl",
@@ -118,6 +167,8 @@ def submit_job(
             fastq_dir=dataset_path,
             sequence_directory=dataset_path,
             data_directory=dataset_path,
+            image_directory=dataset_path / "stitched/expressions/",
+            mask_directory=dataset_path / "stitched/mask/",
             assay=assay,
             threads=threads,
             gpus=gpus,
@@ -131,7 +182,7 @@ def submit_job(
     slurm_script = template.format(
         threads=threads,
         singularity_image_dir=singularity_image_dir,
-        output_log=dest_dir / f"{modality}.log",
+        output_log=dest_dir / f"{pipeline_name}.log",
         tmp_path=shlex.quote(fspath(tmp_path)),
         cwltool_command=pipeline_command_str,
     )
@@ -161,7 +212,8 @@ def get_parent_uuid(derived_uuid: str) -> str:
         print(json)
 
 
-def get_derived_datasets_by_modality(modality: str):
+def get_datasets_by_pipeline(pipeline_name: str):
+    modality = modalities_dict[pipeline_name]
     client = Client('https://cells.api.hubmapconsortium.org/api/')
     derived_uuids = [
         dataset["uuid"]
@@ -170,38 +222,43 @@ def get_derived_datasets_by_modality(modality: str):
     return derived_uuids
 
 
-def get_metadata(raw_uuid, derived_uuid, modality):
+def get_metadata(raw_uuid, derived_uuid, pipeline_name):
     json = requests.get(f"https://entity.api.hubmapconsortium.org/entities/{raw_uuid}").json()
 
-    if modality in ["rna", "atac"]:
+    uuid = derived_uuid if pipeline_name in ["sprm"] else raw_uuid
+
+    if pipeline_name in ["salmon-rnaseq", "sc-atac-seq-pipeline"]:
         metadata = {
-            "uuid": raw_uuid,
+            "uuid": uuid,
             "group_name": json["group_name"],
             "assay": json["data_types"][0],
         }
-    elif modality in ["codex"]:
+    elif pipeline_name in ["codex-pipeline", "sprm"]:
         metadata = {
-            "uuid": raw_uuid,
+            "uuid": uuid,
             "group_name": json["group_name"],
             "tissue_type": get_tissue_type(derived_uuid),
         }
     return metadata
 
 
-def get_raw_datasets_and_metadata(modality):
-    derived_uuids = get_derived_datasets_by_modality(modality)
+def get_datasets_and_metadata(pipeline_name):
+    derived_uuids = get_datasets_by_pipeline(pipeline_name)
     uuid_pairs = [(get_parent_uuid(uuid), uuid) for uuid in derived_uuids]
+    print(len(uuid_pairs))
     metadata_list = [
-        get_metadata(uuid_pair[0], uuid_pair[1], modality) for uuid_pair in uuid_pairs
+        get_metadata(uuid_pair[0], uuid_pair[1], pipeline_name) for uuid_pair in uuid_pairs
     ]
+    print(len(metadata_list))
     return pd.DataFrame(metadata_list)
 
 
-def get_dataset_subset(modality, num_from_each):
-    metadata_df = get_raw_datasets_and_metadata(modality)
+def get_dataset_subset(pipeline_name, num_from_each):
+    metadata_df = get_datasets_and_metadata(pipeline_name)
+    print(len(metadata_df.index))
     uuids_list = []
 
-    if modality in ["atac", "rna"]:
+    if pipeline_name in ["sc-atac-seq-pipeline", "salmon-rnaseq"]:
         assays = list(metadata_df["assay"].unique())
         for assay in assays:
             sub_df = metadata_df[metadata_df["assay"] == assay]
@@ -215,7 +272,7 @@ def get_dataset_subset(modality, num_from_each):
                 )
                 count += 1
 
-    elif modality in ["codex"]:
+    elif pipeline_name in ["codex-pipeline", "sprm"]:
         group_names = list(metadata_df["group_name"].unique())
         tissue_types = list(metadata_df["tissue_type"].unique())
         for group_name in group_names:
@@ -287,31 +344,31 @@ def get_tissue_type(dataset: str, token: str = None) -> str:
                 return get_full_organ_name(organ_abbreviation)
 
 
-def get_path_to_data(modality, dataset_tuple):
+def get_path_to_data(pipeline_name, dataset_tuple):
     uuid = dataset_tuple[0]
-    if modality in ["codex"]:
+    if pipeline_name in ["codex-pipeline", "sprm"]:
         return Path(f"/hive/hubmap/data/public/{uuid}/")
-    elif modality in ["rna", "atac"]:
+    elif pipeline_name in ["salmon-rnaseq", "sc-atac-seq-pipeline"]:
         group_name = dataset_tuple[2]
         group_name = group_name.replace(" ", "\ ")
         return Path(f"/hive/hubmap/data/protected/{group_name}/{uuid}/")
 
 
 # def main(dataset_paths: List[Path], assay: str, threads: int, pretend: bool):
-def main(modality, threads=1, gpus=0, num_from_each=1, pretend=False):
+def main(pipeline_name, pipeline_directory, threads=1, gpus=0, num_from_each=1, pretend=False):
 
-    dataset_tuples = get_dataset_subset(modality, num_from_each=num_from_each)
+    dataset_tuples = get_dataset_subset(pipeline_name, num_from_each=num_from_each)
 
-    slurm_path_prefixes = {"rna":"salmon-rnaseq", "atac":"sc-atac-seq", "codex":"codex-pipeline"}
-    slurm_path_prefix = slurm_path_prefixes[modality]
+    slurm_path_prefix = pipeline_name
 
     slurm_path = create_slurm_path(slurm_path_prefix)
 
     for dataset_tuple in dataset_tuples:
-        dataset_path = get_path_to_data(modality, dataset_tuple)
+        dataset_path = get_path_to_data(pipeline_name, dataset_tuple)
         assay = dataset_tuple[1] if len(dataset_tuple) > 1 else None
         submit_job(
-            modality=modality,
+            pipeline_name=pipeline_name,
+            pipeline_base_path=pipeline_directory,
             dataset_path=dataset_path,
             assay=assay,
             threads=threads,
@@ -324,7 +381,8 @@ def main(modality, threads=1, gpus=0, num_from_each=1, pretend=False):
 if __name__ == "__main__":
     p = ArgumentParser()
 
-    p.add_argument("--modality", type=str)
+    p.add_argument("--pipeline_name", type=str)
+    p.add_argument("--pipeline_directory", type=Path, default=default_pipeline_base_path)
     p.add_argument("--threads", type=int, default=16)
     p.add_argument("--gpus", type=int, default=0)
     p.add_argument("--num_from_each", type=int, default=1)
@@ -332,7 +390,8 @@ if __name__ == "__main__":
     args = p.parse_args()
 
     main(
-        modality=args.modality,
+        pipeline_name=args.pipeline_name,
+        pipeline_directory=args.pipeline_directory,
         threads=args.threads,
         gpus=args.gpus,
         pretend=args.pretend,
