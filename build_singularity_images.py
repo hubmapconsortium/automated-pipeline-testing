@@ -6,6 +6,7 @@ from subprocess import CalledProcessError, check_call, check_output
 from typing import Optional
 
 from multi_docker_build.build_docker_images import (
+    get_git_info,
     read_images,
     strip_v_from_version_number,
 )
@@ -15,19 +16,10 @@ singularity_build_command_template = [
     "singularity",
     "build",
     "{dest_image_path}",
-    "docker://{docker_image}",
+    "docker-daemon://{docker_image}",
 ]
 
 singularity_image_dir = Path("/hive/hubmap/data/CMU_Tools_Testing_Group/singularity-images")
-
-
-def get_git_tag(directory: Path) -> Optional[str]:
-    command = ["git", "describe", "--tags"]
-    try:
-        tag = check_output(command, cwd=directory).strip().decode()
-        return strip_v_from_version_number(tag)
-    except CalledProcessError:
-        return None
 
 
 def build_image(docker_image: str, dest_image_dir: Path):
@@ -47,7 +39,7 @@ def build_image(docker_image: str, dest_image_dir: Path):
 
 
 def main(directory: Path, dest_image_dir: Path):
-    tag = get_git_tag(directory) or default_image_tag
+    tag = strip_v_from_version_number(get_git_info(directory)["version"]) or default_image_tag
     images: list[tuple[str, Path, dict[str, Optional[str]]]] = read_images(directory)
     for image, dockerfile_path, options in images:
         tagged_image = f"{image}:{tag}"
