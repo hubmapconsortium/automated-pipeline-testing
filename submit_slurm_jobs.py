@@ -15,6 +15,24 @@ from data_path_utils import create_slurm_path
 
 supported_pipelines = {"salmon-rnaseq", "sc-atac-seq-pipeline", "codex-pipeline", "sprm"}
 
+gpu_pipelines = {"codex-pipeline"}
+
+partition_params_dict = {
+    "EM":{"time":"120:00:00", "cores":48},
+    "RM":{"time":"48:00:00", "cores":128},
+    "RM-512":{"time":"48:00:00", "cores":128},
+    "RM-shared":{"time":"48:00:00", "cores":4},
+    "GPU":{"time":"48:00:00", "gpu_type":"v100-16", "gpu_num":1},
+    "GPU-shared":{"time":"48:00:00", "gpu_type":"v100-16", "gpu_num":1},
+}
+
+default_partitions_dict = {
+    "salmon-rnaseq":"RM-shared",
+    "sc-atac-seq-pipeline":"RM-shared",
+    "codex-pipeline":"GPU-shared",
+    "sprm":"EM",
+}
+
 pipeline_paths = {
     "salmon-rnaseq": Path("salmon-rnaseq/pipeline.cwl"),
     "sc-atac-seq-pipeline": Path("sc-atac-seq-pipeline/sc_atac_seq_prep_process_analyze.cwl"),
@@ -36,12 +54,26 @@ default_pipeline_base_path = Path("/hive/hubmap/data/CMU_Tools_Testing_Group/pip
 singularity_image_dir = Path("/hive/hubmap/data/CMU_Tools_Testing_Group/singularity-images")
 scratch_dir_base = Path("/dev/shm/hive-cwl")
 
-template = """
+cpu_template = """
 #!/bin/bash
 
-#SBATCH -p batch
-#SBATCH --time=1-00:00:00
+#SBATCH -p {partition}
+#SBATCH -n {cores}
+#SBATCH -t {time}
 #SBATCH -c {threads}
+#SBATCH -o {output_log}
+
+export CWL_SINGULARITY_CACHE={singularity_image_dir}
+{cwltool_command}
+rm -rf {tmp_path}
+""".strip()
+
+gpu_template = """
+#!/bin/bash
+
+#SBATCH -p {partition}
+#SBATCH --gpus gpu:{gpu_type}:{gpus}
+#SBATCH -t {time}
 #SBATCH -o {output_log}
 
 export CWL_SINGULARITY_CACHE={singularity_image_dir}
@@ -139,6 +171,7 @@ pipeline_command_templates = {
 
 def submit_job(
     pipeline_name: str,
+    partition: str,
     pipeline_base_path: Path,
     dataset_path: Path,
     assay: str,
@@ -178,11 +211,17 @@ def submit_job(
         for piece in pipeline_command_template
     ]
     pipeline_command_str = shlex.join(pipeline_command)
-    #pipeline_command_str = " ".join(pipeline_command)
 
+    template = gpu_template if pipeline_name in gpu_pipelines else cpu_template
+    partition_params = partition_params_dict[partition]
 
     slurm_script = template.format(
         threads=threads,
+        partition=partition,
+        cores=partition_params["cores"] if "cores" in partition_params else 0,
+        time=partition_params["time"],
+        gpu_type=partition_params["gpu_type"] if "gpu_type" in partition_params else "",
+        gpus=partition_params["gpus"] if "gpus" in partition_params else 0,
         singularity_image_dir=singularity_image_dir,
         output_log=dest_dir / f"{pipeline_name}.log",
         tmp_path=shlex.quote(fspath(tmp_path)),
@@ -366,10 +405,16 @@ def get_path_to_data(pipeline_name, dataset_tuple):
 
 
 # def main(dataset_paths: List[Path], assay: str, threads: int, pretend: bool):
-def main(pipeline_name, pipeline_directory, include_uuids, threads=1, gpus=0, num_from_each=1, pretend=False):
+def main(pipeline_name, partition, pipeline_directory, include_uuids, threads=1, gpus=0, num_from_each=1, pretend=False):
 
     if pipeline_name not in supported_pipelines:
         raise ValueError(f"pipeline_name must be one of {', '.join(supported_pipelines)}")
+
+    if partition != "default" and partition not in default_partitions_dict:
+        raise ValueError(f"partition must be 'default' or one of {', '.join(default_partitions_dict.keys())}")
+
+    if partition == "default":
+        partition = default_partitions_dict[pipeline_name]
 
     if include_uuids is None:
         include_uuids = []
@@ -388,6 +433,7 @@ def main(pipeline_name, pipeline_directory, include_uuids, threads=1, gpus=0, nu
         assay = dataset_tuple[1] if len(dataset_tuple) > 1 else None
         submit_job(
             pipeline_name=pipeline_name,
+            partition=partition,
             pipeline_base_path=pipeline_directory,
             dataset_path=dataset_path,
             assay=assay,
@@ -402,9 +448,10 @@ if __name__ == "__main__":
     p = ArgumentParser()
 
     p.add_argument("--pipeline_name", type=str)
+    p.add_argument("--partition", type=str, default="default")
     p.add_argument("--pipeline_directory", type=Path, default=default_pipeline_base_path)
     p.add_argument("--threads", type=int, default=16)
-    p.add_argument("--gpus", type=int, default=0)
+    p.add_argument("--gpus", type=int, default=1)
     p.add_argument("--num_from_each", type=int, default=1)
     p.add_argument("--include_uuids", type=str, nargs='*')
     p.add_argument("-n", "--pretend", action="store_true")
@@ -412,6 +459,7 @@ if __name__ == "__main__":
 
     main(
         pipeline_name=args.pipeline_name,
+        partition=args.partition,
         pipeline_directory=args.pipeline_directory,
         threads=args.threads,
         gpus=args.gpus,
